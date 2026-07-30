@@ -1,0 +1,20 @@
+# Core dependencies
+requests==2.31.0
+google-auth==2.23.4
+google-auth-oauthlib==1.1.0
+google-api-python-client==2.108.0
+oauthlib==3.2.2
+
+# Video processing
+moviepy==1.0.3
+Pillow==10.1.0
+
+# Pinterest API
+pinterest-api==0.1.0
+
+# Utilities
+python-dotenv==1.0.0
+pytz==2023.3
+
+# HTTP client for Pinterest
+httpx==0.25.2

@@ -1,0 +1,85 @@
+name: Upload YouTube Shorts
+
+on:
+  # Run at optimal upload times (8 AM, 12 PM, 7 PM in user's timezone)
+  schedule:
+    # These are cron expressions in UTC - adjust based on your timezone
+    # Example for EST/EDT (UTC-5/UTC-4):
+    # 8:00 AM EST = 13:00 UTC
+    # 12:00 PM EST = 17:00 UTC
+    # 7:00 PM EST = 00:00 UTC (next day)
+    - cron: '0 13 * * *'  # 8:00 AM EST
+    - cron: '0 17 * * *'  # 12:00 PM EST
+    - cron: '0 0 * * *'   # 7:00 PM EST
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      force_upload:
+        description: 'Force upload immediately (ignore schedule)'
+        required: false
+        default: 'false'
+
+jobs:
+  upload-shorts:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            imagemagick \
+            libmagickwand-dev \
+            pkg-config \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libgdk-pixbuf2.0-dev \
+            shared-mime-info
+      
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Configure environment
+        run: |
+          echo "TIMEZONE=${{ secrets.TIMEZONE }}" >> $GITHUB_ENV
+          mkdir -p /tmp/pinterest_youtube_agent/downloaded
+          mkdir -p /tmp/pinterest_youtube_agent/processed
+      
+      - name: Run Pinterest to YouTube Agent
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          PINTEREST_ACCESS_TOKEN: ${{ secrets.PINTEREST_ACCESS_TOKEN }}
+          TIMEZONE: ${{ secrets.TIMEZONE }}
+        run: |
+          if [ "${{ github.event.inputs.force_upload }}" == "true" ]; then
+            python src/main.py --force
+          else
+            python src/main.py
+          fi
+      
+      - name: Upload logs (if failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-logs
+          path: /tmp/pinterest_youtube_agent/
+          retention-days: 7
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::YouTube Shorts upload workflow failed. Check the logs for details."
