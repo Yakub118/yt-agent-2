@@ -40,6 +40,7 @@ class PinterestDownloader:
         Args:
             query: Search query (e.g., "food recipes")
             page_size: Number of results to return
+            sort_by: Sort method - "relevance", "engagement", or "repins"
             
         Returns:
             List of pin data dictionaries
