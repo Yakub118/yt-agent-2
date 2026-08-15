@@ -5,6 +5,7 @@ Orchestrates the entire Pinterest to YouTube Shorts automation workflow.
 import os
 import sys
 import json
+import requests
 import logging
 from datetime import datetime
 from typing import List, Dict
@@ -99,8 +100,11 @@ class PinterestToYouTubeAgent:
             # Load upload history to prevent duplicate uploads
             history = []
             if os.path.exists(HISTORY_FILE):
-                with open(HISTORY_FILE, 'r') as f:
-                    history = json.load(f)
+                try:
+                    with open(HISTORY_FILE, 'r') as f:
+                        history = json.load(f)
+                except Exception:
+                    history = []
             logger.info(f"Loaded upload history: {len(history)} videos")
             
             # Step 2: Download videos from Pinterest
@@ -120,7 +124,6 @@ class PinterestToYouTubeAgent:
             # Filter out duplicates using Pinterest pin IDs
             unique_videos = []
             for video_path in downloaded_videos:
-                # Extract pin ID from filename (format: keyword_pinid.mp4)
                 filename = os.path.basename(video_path)
                 parts = filename.replace('.mp4', '').split('_')
                 pin_id = parts[-1] if len(parts) > 1 else filename
@@ -135,6 +138,14 @@ class PinterestToYouTubeAgent:
             downloaded_videos = unique_videos
             logger.info(f"Filtered to {len(downloaded_videos)} unique videos after duplicate check")
             
+            if not downloaded_videos:
+                results["message"] = "All downloaded videos were duplicates"
+                results["success"] = True
+                # Save history anyway
+                with open(HISTORY_FILE, 'w') as f:
+                    json.dump(history, f, indent=2)
+                return results
+
             # Step 3: Process videos for YouTube Shorts
             logger.info("\n✂️ Step 2: Processing videos for YouTube Shorts...")
             processed_videos = []
@@ -143,7 +154,6 @@ class PinterestToYouTubeAgent:
             
             # Initialize trending audio engine and download top track
             from src.metadata_generator import TrendingAudioEngine
-            import requests
             
             audio_engine = TrendingAudioEngine()
             trending_tracks = audio_engine.get_trending_audio(1)
@@ -168,7 +178,6 @@ class PinterestToYouTubeAgent:
                 
                 # Generate metadata & script
                 keyword = filename.split("_")[0]
-                metadata = self.metadata_gen.generate_full_metadata(keyword)
                 
                 # Create a 15-second script for the AI to read
                 ai_script = f"Here is the easiest {keyword} recipe you will ever see. Watch closely, because this will change how you cook forever. Don't forget to subscribe for more daily hacks!"
@@ -183,13 +192,14 @@ class PinterestToYouTubeAgent:
                     trending_audio_path=trending_audio_file,
                     voiceover_path=voiceover_path if os.path.exists(voiceover_path) else None
                 )
+                
                 if processed_path:
                     # Validate the processed video
                     is_valid = self.processor.validate_video(processed_path)
                     if is_valid:
                         processed_videos.append({
                             "path": processed_path,
-                            "keyword": filename.split("_")[0],
+                            "keyword": keyword,
                         })
                         logger.info(f"✓ Processed: {filename}")
                     else:
@@ -201,6 +211,9 @@ class PinterestToYouTubeAgent:
             
             if not processed_videos:
                 results["errors"].append("No videos successfully processed")
+                # Save history anyway
+                with open(HISTORY_FILE, 'w') as f:
+                    json.dump(history, f, indent=2)
                 return results
             
             # Step 4: Generate metadata and upload to YouTube
