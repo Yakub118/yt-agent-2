@@ -1,27 +1,27 @@
 # Core dependencies
-requests==2.31.0
-google-auth==2.23.4
-google-auth-oauthlib==1.1.0
-google-api-python-client==2.108.0
-oauthlib==3.2.2
+requests>=2.31.0
+google-auth>=2.30.0
+google-auth-oauthlib>=1.1.0
+google-api-python-client>=2.108.0
+oauthlib>=3.2.2
 
 # Video processing
 moviepy==1.0.3
-Pillow==10.1.0
+Pillow>=10.1.0
 numpy>=1.21.0
 
 # Pinterest API
 pinterest-api==0.1.0
 
 # Utilities
-python-dotenv==1.0.0
-pytz==2023.3
+python-dotenv>=1.0.0
+pytz>=2023.3
 
 # HTTP client for Pinterest
-httpx==0.25.2
+httpx>=0.25.2
 
 # Speech-to-text for auto-captions
 openai-whisper>=20230314
 
-# AI Voiceover (Edge-TTS for realistic human voice)
+# AI Voiceover for Transformative Content
 edge-tts>=6.1.0
