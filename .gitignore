@@ -1,5 +1,5 @@
 ```
-# Python
+# Dependencies
 __pycache__/
 *.pyc
 *.pyo
@@ -8,27 +8,35 @@ __pycache__/
 env/
 venv/
 .venv/
-.ENV
-.python-version
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
+.env
+.env.local
+.env.*
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs
 *.log
-*.pot
-*.pyc
-*.pyo
-*.pyd
-*.so
-.MF
-tags
-TAGS
-.IDEAssistant
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS
 .DS_Store
 Thumbs.db
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
 ```
