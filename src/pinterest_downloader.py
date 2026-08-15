@@ -32,9 +32,10 @@ class PinterestDownloader:
         self.min_likes_for_viral = 500
         self.days_lookback = 30
 
-    def search_pins(self, query: str, page_size: int = 10, sort_by: str = "relevance") -> List[Dict]:
+    def search_pins(self, query: str, page_size: int = 20) -> List[Dict]:
         """
-        Search for pins with a specific query.
+        Search for pins using the official Pinterest v5 Search API.
+        Uses GET /v5/search/pins endpoint which ranks viral pins by default.
         
         Args:
             query: Search query (e.g., "food recipes")
@@ -46,29 +47,33 @@ class PinterestDownloader:
         """
         pins = []
         try:
-            # Note: Pinterest API v5 has limited search capabilities
-            # This is a simplified implementation
-            url = f"{self.base_url}/pins"
-            params = {"page_size": page_size}
+            # CORRECT ENDPOINT for search - uses Pinterest's relevance ranking
+            url = f"{self.base_url}/search/pins"
+            params = {
+                "query": query,
+                "page_size": page_size
+            }
             
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, headers=self.headers, params=params, timeout=15)
             response.raise_for_status()
             data = response.json()
             
-            pins = data.get("items", [])
+            raw_pins = data.get("items", [])
             
-            # Sort by engagement if requested
-            if sort_by in ["engagement", "repins"]:
-                pins = self._sort_by_engagement(pins, sort_by)
+            # Filter strictly for VIDEO pins (Images don't work for Shorts)
+            for pin in raw_pins:
+                media = pin.get("media", {})
+                # Check if the pin is a video
+                if media.get("media_type") == "video":
+                    pins.append(pin)
             
-            logger.info(f"Found {len(pins)} pins for query: {query}")
+            logger.info(f"Found {len(pins)} VIDEO pins for query: {query}")
+            return pins
             
         except Exception as e:
-            logger.error(f"Error searching pins: {e}")
+            logger.error(f"Error searching Pinterest API: {e}")
             # Fallback to web scraping method
-            pins = self._scrape_pinterest_search(query, page_size, sort_by)
-        
-        return pins
+            return self._scrape_pinterest_search(query, page_size, "relevance")
 
     def _sort_by_engagement(self, pins: List[Dict], sort_by: str = "repins") -> List[Dict]:
         """
@@ -97,7 +102,7 @@ class PinterestDownloader:
     def get_viral_pins(self, query: str, max_results: int = 10) -> List[Dict]:
         """
         Get viral pins sorted by most repinned/engaged in the last 30 days.
-        This implements smart sourcing for proven viral content.
+        Uses Pinterest's search relevance ranking which surfaces viral content.
         
         Args:
             query: Search query
@@ -108,25 +113,20 @@ class PinterestDownloader:
         """
         logger.info(f"Searching for viral content: {query}")
         
-        # Search and sort by engagement
-        pins = self.search_pins(query, page_size=max_results * 2, sort_by="engagement")
+        # Search using Pinterest's relevance ranking (which surfaces viral content)
+        pins = self.search_pins(query, page_size=max_results * 2)
         
-        # Filter for viral content based on engagement thresholds
+        # Filter for video pins and recent content
         viral_pins = []
         cutoff_date = datetime.now() - timedelta(days=self.days_lookback)
         
         for pin in pins:
-            stats = pin.get("stats", {})
-            repins = stats.get("saves", 0)
-            impressions = stats.get("impressions", 0)
+            # Check if pin is a video
+            media = pin.get("media", {})
+            if media.get("media_type") != "video":
+                continue
             
-            # Check if pin meets viral thresholds
-            is_viral = (
-                repins >= self.min_repins_for_viral or
-                impressions >= self.min_likes_for_viral * 10
-            )
-            
-            # Also include recently popular content
+            # Check recency
             created_at = pin.get("created_at", "")
             try:
                 if created_at:
@@ -137,13 +137,13 @@ class PinterestDownloader:
             except:
                 is_recent = True
             
-            if is_viral or is_recent:
+            if is_recent:
                 viral_pins.append(pin)
             
             if len(viral_pins) >= max_results:
                 break
         
-        # If not enough viral pins found, use top engaged ones
+        # If not enough recent pins, use top results
         if len(viral_pins) < max_results:
             viral_pins = pins[:max_results]
         
@@ -270,7 +270,7 @@ class PinterestDownloader:
             if use_viral_sourcing:
                 pins = self.get_viral_pins(keyword, max_results=5)
             else:
-                pins = self.search_pins(keyword, page_size=5, sort_by="engagement")
+                pins = self.search_pins(keyword, page_size=5)
             
             for pin in pins:
                 if len(downloaded_paths) >= count:

@@ -112,11 +112,48 @@ class PinterestToYouTubeAgent:
             
             from config.settings import PROCESSED_VIDEOS_DIR
             
+            # Initialize trending audio engine and download top track
+            from src.metadata_generator import TrendingAudioEngine
+            import requests
+            
+            audio_engine = TrendingAudioEngine()
+            trending_tracks = audio_engine.get_trending_audio(1)
+            
+            trending_audio_file = None
+            if trending_tracks and trending_tracks[0].get('url'):
+                audio_url = trending_tracks[0]['url']
+                trending_audio_file = "/tmp/trending_audio.mp3"
+                try:
+                    r = requests.get(audio_url, timeout=15)
+                    with open(trending_audio_file, 'wb') as f:
+                        f.write(r.content)
+                    logger.info(f"Downloaded trending audio: {trending_audio_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to download trending audio: {e}")
+                    trending_audio_file = None
+            
             for video_path in downloaded_videos:
                 filename = os.path.basename(video_path)
                 output_path = os.path.join(PROCESSED_VIDEOS_DIR, f"processed_{filename}")
+                voiceover_path = "/tmp/voiceover.mp3"
                 
-                processed_path = self.processor.process_video(video_path, output_path)
+                # Generate metadata & script
+                keyword = filename.split("_")[0]
+                metadata = self.metadata_gen.generate_full_metadata(keyword)
+                
+                # Create a 15-second script for the AI to read
+                ai_script = f"Here is the easiest {keyword} recipe you will ever see. Watch closely, because this will change how you cook forever. Don't forget to subscribe for more daily hacks!"
+                
+                # Generate voiceover using Edge-TTS
+                self.processor._generate_edge_voiceover(ai_script, voiceover_path)
+                
+                # Process video with trending audio and voiceover
+                processed_path = self.processor.process_video(
+                    video_path, 
+                    output_path, 
+                    trending_audio_path=trending_audio_file,
+                    voiceover_path=voiceover_path if os.path.exists(voiceover_path) else None
+                )
                 if processed_path:
                     # Validate the processed video
                     is_valid = self.processor.validate_video(processed_path)

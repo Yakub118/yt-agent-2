@@ -22,3 +22,6 @@ httpx==0.25.2
 
 # Speech-to-text for auto-captions
 openai-whisper>=20230314
+
+# AI Voiceover (Edge-TTS for realistic human voice)
+edge-tts>=6.1.0

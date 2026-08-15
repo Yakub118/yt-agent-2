@@ -46,7 +46,8 @@ class VideoProcessor:
     def process_video(self, input_path: str, output_path: str, 
                       add_hook: bool = True, add_captions: bool = True,
                       enable_seamless_loop: bool = True,
-                      trending_audio_path: str = None) -> Optional[str]:
+                      trending_audio_path: str = None,
+                      voiceover_path: str = None) -> Optional[str]:
         """
         Process a video to meet YouTube Shorts specifications with viral optimizations.
         
@@ -57,6 +58,7 @@ class VideoProcessor:
             add_captions: Whether to add Alex Hormozi-style captions
             enable_seamless_loop: Whether to enable seamless loop cutting
             trending_audio_path: Path to trending audio file to overlay
+            voiceover_path: Path to AI voiceover file to mix with trending audio
             
         Returns:
             Path to processed video or None if failed
@@ -110,8 +112,13 @@ class VideoProcessor:
             # Step 9: Set FPS to standard value
             clip = clip.set_fps(30)
             
-            # Step 10: Handle audio - remove original and add trending audio if provided
-            if trending_audio_path and os.path.exists(trending_audio_path):
+            # Step 10: Handle audio - mix trending audio and voiceover if provided
+            if voiceover_path and os.path.exists(voiceover_path):
+                # Generate voiceover and mix with trending audio
+                clip = self._mix_audio_tracks(clip, trending_audio_path, voiceover_path)
+                logger.info(f"Mixed voiceover ({voiceover_path}) with trending audio")
+            elif trending_audio_path and os.path.exists(trending_audio_path):
+                # Just add trending audio without voiceover
                 clip = self._add_trending_audio(clip, trending_audio_path)
                 logger.info(f"Added trending audio: {trending_audio_path}")
             elif clip.audio is None:
@@ -380,6 +387,7 @@ class VideoProcessor:
         """
         try:
             from moviepy.editor import AudioFileClip
+            from moviepy.audio.fx import volumex
             
             # Load the trending audio
             trending_audio = AudioFileClip(audio_path)
@@ -403,6 +411,85 @@ class VideoProcessor:
         except Exception as e:
             logger.warning(f"Could not add trending audio: {e}, keeping original audio")
             return clip
+
+    def _generate_edge_voiceover(self, script: str, output_path: str) -> Optional[str]:
+        """
+        Generate a realistic AI voiceover using Edge-TTS (Microsoft Azure voices).
+        
+        Args:
+            script: Text script for the voiceover
+            output_path: Path to save the generated audio
+            
+        Returns:
+            Path to generated voiceover file or None if failed
+        """
+        try:
+            import edge_tts
+            import asyncio
+            
+            # 'en-US-AndrewMultilingualNeural' is deep and engaging (great for food/hacks)
+            # Other great options: 'en-US-JennyNeural' (upbeat), 'en-GB-SoniaNeural'
+            voice = "en-US-AndrewMultilingualNeural" 
+            
+            logger.info(f"Generating Edge-TTS voiceover with voice: {voice}")
+            
+            # Edge-TTS is async, so we run it in an event loop
+            communicate = edge_tts.Communicate(script, voice)
+            asyncio.run(communicate.save(output_path))
+            
+            logger.info(f"Voiceover saved to {output_path}")
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Failed to generate voiceover: {e}")
+            return None
+
+    def _mix_audio_tracks(self, video_clip: VideoFileClip, trending_audio_path: str, voiceover_path: str) -> VideoFileClip:
+        """
+        Mix Trending Music (quiet) with AI Voiceover (loud).
+        
+        Args:
+            video_clip: Input video clip
+            trending_audio_path: Path to trending music file
+            voiceover_path: Path to AI voiceover file
+            
+        Returns:
+            Video clip with mixed audio tracks
+        """
+        try:
+            from moviepy.editor import AudioFileClip, CompositeAudioClip
+            from moviepy.audio.fx import volumex
+            
+            # Load tracks
+            music = AudioFileClip(trending_audio_path)
+            voice = AudioFileClip(voiceover_path)
+            
+            # Trim/loop music to match video length
+            if music.duration > video_clip.duration:
+                music = music.subclip(0, video_clip.duration)
+            else:
+                music = music.loop(duration=video_clip.duration)
+                
+            # Trim voice if it's longer than video
+            if voice.duration > video_clip.duration:
+                voice = voice.subclip(0, video_clip.duration)
+
+            # CRITICAL VOLUMES:
+            music = volumex(music, 0.15)  # Music at 15% volume (background vibe)
+            voice = volumex(voice, 1.2)   # Voice at 120% volume (clear and loud)
+            
+            # Composite them together
+            final_audio = CompositeAudioClip([music, voice])
+            
+            # Attach to video
+            video_clip = video_clip.set_audio(final_audio)
+            
+            logger.info("Successfully mixed Trending Audio + AI Voiceover")
+            return video_clip
+            
+        except Exception as e:
+            logger.error(f"Error mixing audio: {e}")
+            return video_clip
 
     def validate_video(self, video_path: str) -> bool:
         """

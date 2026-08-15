@@ -36,15 +36,14 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            ffmpeg \
-            imagemagick \
-            libmagickwand-dev \
-            pkg-config \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libgdk-pixbuf2.0-dev \
-            shared-mime-info
+          sudo apt-get install -y ffmpeg imagemagick libmagickwand-dev
+          
+      # CRITICAL: Fix ImageMagick policy so MoviePy TextClip works
+      - name: Fix ImageMagick Security Policy
+        run: |
+          sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
+          # Increase disk limit to prevent OOM crash during Whisper compositing
+          sudo sed -i 's/<policy domain="resource" name="disk" value="1GiB"\/>/<policy domain="resource" name="disk" value="8GiB"\/>/g' /etc/ImageMagick-6/policy.xml
       
       - name: Install Python dependencies
         run: |
