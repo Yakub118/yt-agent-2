@@ -10,7 +10,7 @@ import numpy as np
 
 # CORRECT IMPORTS for moviepy==1.0.3
 from moviepy.editor import (
-    VideoFileClip, CompositeVideoClip, TextClip, ImageClip, 
+    VideoFileClip, CompositeVideoClip, TextClip, 
     AudioClip, CompositeAudioClip, AudioFileClip
 )
 from moviepy.audio.fx.all import volumex
@@ -176,6 +176,7 @@ class VideoProcessor:
     def _add_hook_overlay(self, clip: VideoFileClip, text: str) -> VideoFileClip:
         """Add a high-contrast hook text overlay to the first few seconds."""
         try:
+            # FIXED: 'text_align' is not valid in MoviePy 1.0.3, changed to 'align'
             txt_clip = TextClip(
                 text,
                 fontsize=70,
@@ -185,7 +186,7 @@ class VideoProcessor:
                 stroke_width=3,
                 method='caption',
                 size=(clip.w * 0.9, None),
-                text_align='center'
+                align='center'
             )
             txt_clip = txt_clip.set_position(('center', 100)).set_duration(min(3.5, clip.duration))
             composite = CompositeVideoClip([clip, txt_clip])
