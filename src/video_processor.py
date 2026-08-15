@@ -1,19 +1,22 @@
 """
 Video Processor Module
 Processes downloaded videos to meet YouTube Shorts specifications.
+Includes viral optimization features: hook generation, seamless looping, and auto-captions.
 """
 import os
 import logging
-from typing import Optional, Tuple
-from moviepy.editor import VideoFileClip, CompositeVideoClip
-from moviepy.video.fx.all import crop, resize
+from typing import Optional, Tuple, List
+import numpy as np
+from moviepy import VideoFileClip, CompositeVideoClip, TextClip, ImageClip, AudioClip, CompositeAudioClip, AudioFileClip
+from moviepy.video import fx as video_fx
+from moviepy.audio import fx as audio_fx
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class VideoProcessor:
-    """Process videos for YouTube Shorts format."""
+    """Process videos for YouTube Shorts format with viral optimizations."""
 
     def __init__(self):
         from config.settings import (
@@ -27,14 +30,33 @@ class VideoProcessor:
         self.min_duration = MIN_VIDEO_DURATION_SECONDS
         self.max_resolution = SHORTS_MAX_RESOLUTION
         self.min_resolution = SHORTS_MIN_RESOLUTION
+        
+        # Viral hook settings
+        self.hook_duration = 2.0  # Seconds to cut from start
+        self.hook_texts = [
+            "Wait for the end...",
+            "You've been cooking this wrong",
+            "This will change everything",
+            "Don't skip this!",
+            "The secret revealed at 0:45",
+            "Try this NOW!",
+            "Game changer recipe!",
+        ]
 
-    def process_video(self, input_path: str, output_path: str) -> Optional[str]:
+    def process_video(self, input_path: str, output_path: str, 
+                      add_hook: bool = True, add_captions: bool = True,
+                      enable_seamless_loop: bool = True,
+                      trending_audio_path: str = None) -> Optional[str]:
         """
-        Process a video to meet YouTube Shorts specifications.
+        Process a video to meet YouTube Shorts specifications with viral optimizations.
         
         Args:
             input_path: Path to input video
             output_path: Path to save processed video
+            add_hook: Whether to add 3-second hook (cut first 2s + overlay text)
+            add_captions: Whether to add Alex Hormozi-style captions
+            enable_seamless_loop: Whether to enable seamless loop cutting
+            trending_audio_path: Path to trending audio file to overlay
             
         Returns:
             Path to processed video or None if failed
@@ -45,32 +67,55 @@ class VideoProcessor:
             # Load the video
             clip = VideoFileClip(input_path)
             
-            # Step 1: Trim to max duration if needed
+            # Step 1: Apply 3-second hook (cut first 2 seconds)
+            if add_hook and clip.duration > self.hook_duration + self.min_duration:
+                clip = clip.subclip(self.hook_duration)
+                logger.info(f"Applied hook: cut first {self.hook_duration} seconds")
+            
+            # Step 2: Add hook text overlay
+            if add_hook:
+                hook_text = np.random.choice(self.hook_texts)
+                clip = self._add_hook_overlay(clip, hook_text)
+                logger.info(f"Added hook overlay: '{hook_text}'")
+            
+            # Step 3: Trim to max duration if needed
             if clip.duration > self.max_duration:
                 # Take the most interesting part (middle section)
                 start_time = (clip.duration - self.max_duration) / 2
                 clip = clip.subclip(start_time, start_time + self.max_duration)
                 logger.info(f"Trimmed video to {clip.duration} seconds")
             
-            # Step 2: Ensure minimum duration
+            # Step 4: Ensure minimum duration
             if clip.duration < self.min_duration:
                 # Loop the video to reach minimum duration
                 clip = clip.loop(duration=self.min_duration)
                 logger.info(f"Looped video to {clip.duration} seconds")
             
-            # Step 3: Crop to 9:16 aspect ratio (vertical)
+            # Step 5: Apply seamless loop cutter
+            if enable_seamless_loop:
+                clip = self._apply_seamless_loop(clip)
+                logger.info("Applied seamless loop optimization")
+            
+            # Step 6: Crop to 9:16 aspect ratio (vertical)
             clip = self._crop_to_vertical(clip)
             
-            # Step 4: Resize to optimal resolution
+            # Step 7: Resize to optimal resolution
             clip = self._resize_to_shorts(clip)
             
-            # Step 5: Set FPS to standard value
+            # Step 8: Add Alex Hormozi-style captions
+            if add_captions:
+                clip = self._add_hormozi_captions(clip)
+                logger.info("Added Hormozi-style captions")
+            
+            # Step 9: Set FPS to standard value
             clip = clip.set_fps(30)
             
-            # Step 6: Add audio if missing
-            if clip.audio is None:
+            # Step 10: Handle audio - remove original and add trending audio if provided
+            if trending_audio_path and os.path.exists(trending_audio_path):
+                clip = self._add_trending_audio(clip, trending_audio_path)
+                logger.info(f"Added trending audio: {trending_audio_path}")
+            elif clip.audio is None:
                 # Create silent audio track
-                from moviepy.audio.AudioClip import AudioClip
                 make_frame = lambda t: [0, 0]
                 clip = clip.set_audio(AudioClip(make_frame, duration=clip.duration))
             
@@ -157,6 +202,207 @@ class VideoProcessor:
         
         logger.info(f"Resized to: {clip.size}")
         return clip
+
+    def _add_hook_overlay(self, clip: VideoFileClip, text: str) -> VideoFileClip:
+        """
+        Add a high-contrast hook text overlay to the first few seconds of the video.
+        
+        Args:
+            clip: Input video clip
+            text: Hook text to display
+            
+        Returns:
+            Video clip with hook overlay
+        """
+        try:
+            # Create text clip with high contrast styling (Alex Hormozi style)
+            txt_clip = TextClip(
+                text,
+                fontsize=70,
+                color='white',
+                font='Arial-Bold',
+                stroke_color='black',
+                stroke_width=3,
+                method='caption',
+                size=(clip.w * 0.9, None),
+                text_align='center'
+            )
+            
+            # Position at top center of screen
+            txt_clip = txt_clip.set_position(('center', 100)).set_duration(min(3.5, clip.duration))
+            
+            # Composite the text over the video
+            composite = CompositeVideoClip([clip, txt_clip])
+            
+            logger.info(f"Added hook overlay: '{text}'")
+            return composite
+            
+        except Exception as e:
+            logger.warning(f"Could not add hook overlay: {e}, returning original clip")
+            return clip
+
+    def _apply_seamless_loop(self, clip: VideoFileClip) -> VideoFileClip:
+        """
+        Apply seamless loop optimization by finding similar frames at start and end.
+        Cuts the video to create a smooth transition when looping.
+        
+        Args:
+            clip: Input video clip
+            
+        Returns:
+            Video clip optimized for seamless looping
+        """
+        try:
+            duration = clip.duration
+            
+            # For videos longer than min_duration, cut a small portion from the end
+            # to find a frame that matches better with the beginning
+            if duration > self.min_duration + 2:
+                # Analyze frames near the end to find one similar to the first frame
+                cut_duration = 0.5  # Amount to potentially cut
+                
+                # Get first frame for comparison
+                first_frame = clip.get_frame(0)
+                
+                # Sample frames from the last 2 seconds
+                sample_times = np.linspace(duration - 2, duration - 0.3, 8)
+                
+                best_cut_time = duration - cut_duration
+                min_diff = float('inf')
+                
+                for t in sample_times:
+                    try:
+                        current_frame = clip.get_frame(t)
+                        # Calculate frame difference (simplified MSE)
+                        diff = np.mean((first_frame - current_frame) ** 2)
+                        
+                        if diff < min_diff:
+                            min_diff = diff
+                            best_cut_time = t
+                    except:
+                        continue
+                
+                # Cut at the best matching point
+                if best_cut_time > self.min_duration:
+                    clip = clip.subclip(0, best_cut_time)
+                    logger.info(f"Applied seamless loop cut at {best_cut_time:.2f}s")
+            
+            return clip
+            
+        except Exception as e:
+            logger.warning(f"Could not apply seamless loop: {e}, returning original clip")
+            return clip
+
+    def _add_hormozi_captions(self, clip: VideoFileClip) -> VideoFileClip:
+        """
+        Add Alex Hormozi-style auto-captions to the video.
+        Uses Whisper for transcription and renders dynamic word-by-word captions.
+        
+        Args:
+            clip: Input video clip
+            
+        Returns:
+            Video clip with captions overlay
+        """
+        try:
+            # Try to import whisper for speech-to-text
+            import whisper
+            
+            # Extract audio and transcribe
+            audio_path = "/tmp/video_audio.mp3"
+            clip.audio.write_audiofile(audio_path, logger=None)
+            
+            # Load whisper model (tiny for speed)
+            model = whisper.load_model("tiny")
+            result = model.transcribe(audio_path, language="en")
+            
+            segments = result.get("segments", [])
+            
+            if not segments:
+                logger.warning("No speech detected in video")
+                return clip
+            
+            caption_clips = []
+            
+            for segment in segments:
+                start_time = segment["start"]
+                end_time = segment["end"]
+                text = segment["text"].strip()
+                
+                # Split into words for word-by-word animation
+                words = text.split()
+                word_duration = (end_time - start_time) / max(len(words), 1)
+                
+                current_time = start_time
+                for i, word in enumerate(words):
+                    # Create individual word clip
+                    word_clip = TextClip(
+                        word,
+                        fontsize=56,
+                        color='yellow',
+                        font='Arial-Bold',
+                        stroke_color='black',
+                        stroke_width=2,
+                    )
+                    
+                    # Position in center-bottom area
+                    word_clip = word_clip.set_position(('center', clip.h * 0.75))
+                    word_clip = word_clip.set_start(current_time).set_duration(word_duration)
+                    
+                    caption_clips.append(word_clip)
+                    current_time += word_duration
+            
+            # Composite all caption clips over the video
+            if caption_clips:
+                composite = CompositeVideoClip([clip] + caption_clips)
+                logger.info(f"Added {len(caption_clips)} caption segments")
+                return composite
+            
+            return clip
+            
+        except ImportError:
+            logger.warning("Whisper not installed, skipping auto-captions")
+            return clip
+        except Exception as e:
+            logger.warning(f"Could not add captions: {e}, returning original clip")
+            return clip
+
+    def _add_trending_audio(self, clip: VideoFileClip, audio_path: str) -> VideoFileClip:
+        """
+        Replace original audio with trending audio track.
+        
+        Args:
+            clip: Input video clip
+            audio_path: Path to trending audio file
+            
+        Returns:
+            Video clip with trending audio
+        """
+        try:
+            from moviepy.editor import AudioFileClip
+            
+            # Load the trending audio
+            trending_audio = AudioFileClip(audio_path)
+            
+            # Trim or loop audio to match video duration
+            if trending_audio.duration > clip.duration:
+                trending_audio = trending_audio.subclip(0, clip.duration)
+            elif trending_audio.duration < clip.duration:
+                # Loop the audio to fill the video
+                trending_audio = trending_audio.loop(duration=clip.duration)
+            
+            # Adjust volume to avoid overpowering
+            trending_audio = volumex(trending_audio, 0.8)
+            
+            # Set the new audio
+            clip = clip.set_audio(trending_audio)
+            
+            logger.info(f"Added trending audio ({trending_audio.duration:.2f}s)")
+            return clip
+            
+        except Exception as e:
+            logger.warning(f"Could not add trending audio: {e}, keeping original audio")
+            return clip
 
     def validate_video(self, video_path: str) -> bool:
         """

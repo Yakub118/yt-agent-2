@@ -1,14 +1,212 @@
 """
 Metadata Generator Module
 Generates SEO-optimized titles, descriptions, and hashtags for YouTube Shorts.
+Includes viral audio engine for trending music discovery.
 """
 import random
 import logging
+import os
+import json
 from datetime import datetime
 from typing import List, Dict, Tuple
+import httpx
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class TrendingAudioEngine:
+    """Scrape and manage trending audio from YouTube Shorts and TikTok."""
+    
+    def __init__(self):
+        self.trending_audio_cache = []
+        self.cache_expiry = None
+        self.cache_duration_hours = 24
+        
+        # Fallback trending audio tracks (copyright-free options)
+        self.fallback_tracks = [
+            {"name": "Upbeat Cooking", "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"},
+            {"name": "Kitchen Vibes", "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"},
+            {"name": "Food Beat", "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"},
+            {"name": "Recipe Rhythm", "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"},
+            {"name": "Cooking Flow", "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3"},
+        ]
+    
+    def get_trending_audio(self, count: int = 10) -> List[Dict]:
+        """
+        Get top trending audio tracks from YouTube Shorts/TikTok.
+        
+        Args:
+            count: Number of tracks to return
+            
+        Returns:
+            List of trending audio track info
+        """
+        # Check if cache is still valid
+        if self.cache_expiry and datetime.now() < self.cache_expiry:
+            logger.info("Using cached trending audio")
+            return self.trending_audio_cache[:count]
+        
+        # Try to scrape from TikTok Creative Center
+        tracks = self._scrape_tiktok_trending()
+        
+        # If scraping fails, use fallback tracks
+        if not tracks:
+            logger.warning("Could not scrape trending audio, using fallback tracks")
+            tracks = self.fallback_tracks
+        
+        # Update cache
+        self.trending_audio_cache = tracks
+        from datetime import timedelta
+        self.cache_expiry = datetime.now() + timedelta(hours=self.cache_duration_hours)
+        
+        logger.info(f"Retrieved {len(tracks)} trending audio tracks")
+        return tracks[:count]
+    
+    def _scrape_tiktok_trending(self) -> List[Dict]:
+        """
+        Scrape TikTok Creative Center for trending songs.
+        
+        Returns:
+            List of trending audio track info
+        """
+        try:
+            # TikTok Creative Center API endpoint (public data)
+            url = "https://creative-api.tiktokapis.com/creative/v1/music/trending"
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "application/json",
+            }
+            
+            # Note: This is a simplified implementation
+            # Real implementation would need proper API authentication
+            response = httpx.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            tracks = []
+            
+            for item in data.get("music_list", [])[:10]:
+                tracks.append({
+                    "name": item.get("title", "Unknown"),
+                    "artist": item.get("author", "Unknown"),
+                    "url": item.get("play_url", ""),
+                    "duration": item.get("duration", 30),
+                    "trend_score": item.get("popularity_score", 0),
+                })
+            
+            return tracks
+            
+        except Exception as e:
+            logger.error(f"Error scraping TikTok trending: {e}")
+            return []
+    
+    def _scrape_youtube_trending(self) -> List[Dict]:
+        """
+        Scrape YouTube Shorts trending audio page.
+        
+        Returns:
+            List of trending audio track info
+        """
+        try:
+            # YouTube doesn't have a public API for trending audio
+            # This would require web scraping or using third-party services
+            # For now, we'll use a placeholder implementation
+            
+            url = "https://music.youtube.com/browse/trending"
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "text/html,application/xhtml+xml",
+            }
+            
+            response = httpx.get(url, headers=headers, timeout=10)
+            
+            # Parse HTML to extract trending songs
+            # This is a simplified extraction
+            tracks = []
+            
+            # In production, you'd use BeautifulSoup or similar to parse the HTML
+            # and extract actual trending song data
+            
+            return tracks
+            
+        except Exception as e:
+            logger.error(f"Error scraping YouTube trending: {e}")
+            return []
+    
+    def download_trending_audio(self, save_dir: str, count: int = 5) -> List[str]:
+        """
+        Download top trending audio tracks.
+        
+        Args:
+            save_dir: Directory to save audio files
+            count: Number of tracks to download
+            
+        Returns:
+            List of paths to downloaded audio files
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        
+        tracks = self.get_trending_audio(count)
+        downloaded_paths = []
+        
+        for i, track in enumerate(tracks):
+            try:
+                if not track.get("url"):
+                    continue
+                
+                # Generate filename
+                safe_name = track["name"].replace(" ", "_").replace("/", "_")[:50]
+                filename = f"trending_{i+1}_{safe_name}.mp3"
+                filepath = os.path.join(save_dir, filename)
+                
+                # Skip if already exists
+                if os.path.exists(filepath):
+                    downloaded_paths.append(filepath)
+                    continue
+                
+                # Download the audio
+                response = httpx.get(track["url"], timeout=30)
+                
+                with open(filepath, "wb") as f:
+                    f.write(response.content)
+                
+                downloaded_paths.append(filepath)
+                logger.info(f"Downloaded: {track['name']}")
+                
+            except Exception as e:
+                logger.error(f"Error downloading {track['name']}: {e}")
+        
+        logger.info(f"Downloaded {len(downloaded_paths)} trending audio tracks")
+        return downloaded_paths
+    
+    def get_best_track_for_food(self) -> Dict:
+        """
+        Get the best trending audio track for food content.
+        
+        Returns:
+            Best matching track info
+        """
+        tracks = self.get_trending_audio(10)
+        
+        # Prioritize upbeat, energetic tracks for food content
+        food_keywords = ["upbeat", "energetic", "happy", "cooking", "kitchen", "food"]
+        
+        for track in tracks:
+            name_lower = track.get("name", "").lower()
+            for keyword in food_keywords:
+                if keyword in name_lower:
+                    logger.info(f"Selected food-friendly track: {track['name']}")
+                    return track
+        
+        # Return the most popular track if no match
+        if tracks:
+            return max(tracks, key=lambda t: t.get("trend_score", 0))
+        
+        # Fallback
+        return random.choice(self.fallback_tracks)
 
 
 class MetadataGenerator:
