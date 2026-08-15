@@ -4,6 +4,7 @@ Orchestrates the entire Pinterest to YouTube Shorts automation workflow.
 """
 import os
 import sys
+import json
 import logging
 from datetime import datetime
 from typing import List, Dict
@@ -13,6 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Duplicate prevention - prevents uploading same video multiple times
+HISTORY_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "upload_history.json")
 
 
 class PinterestToYouTubeAgent:
@@ -92,6 +96,13 @@ class PinterestToYouTubeAgent:
                     results["message"] = f"Waiting for scheduled time: {next_upload}"
                     return results
             
+            # Load upload history to prevent duplicate uploads
+            history = []
+            if os.path.exists(HISTORY_FILE):
+                with open(HISTORY_FILE, 'r') as f:
+                    history = json.load(f)
+            logger.info(f"Loaded upload history: {len(history)} videos")
+            
             # Step 2: Download videos from Pinterest
             if self.downloader:
                 logger.info("\n📥 Step 1: Downloading videos from Pinterest...")
@@ -105,6 +116,24 @@ class PinterestToYouTubeAgent:
             if not downloaded_videos:
                 results["errors"].append("No videos downloaded")
                 return results
+            
+            # Filter out duplicates using Pinterest pin IDs
+            unique_videos = []
+            for video_path in downloaded_videos:
+                # Extract pin ID from filename (format: keyword_pinid.mp4)
+                filename = os.path.basename(video_path)
+                parts = filename.replace('.mp4', '').split('_')
+                pin_id = parts[-1] if len(parts) > 1 else filename
+                
+                if pin_id in history:
+                    logger.info(f"Skipping duplicate video: {pin_id}")
+                    continue
+                
+                unique_videos.append(video_path)
+                history.append(pin_id)
+            
+            downloaded_videos = unique_videos
+            logger.info(f"Filtered to {len(downloaded_videos)} unique videos after duplicate check")
             
             # Step 3: Process videos for YouTube Shorts
             logger.info("\n✂️ Step 2: Processing videos for YouTube Shorts...")
@@ -222,6 +251,12 @@ class PinterestToYouTubeAgent:
                     logger.warning(f"  - {error}")
             
             results["success"] = results["videos_uploaded"] > 0 or not self.uploader
+            
+            # Save upload history to prevent future duplicates
+            with open(HISTORY_FILE, 'w') as f:
+                json.dump(history, f, indent=2)
+            logger.info(f"Saved upload history: {len(history)} videos")
+            
             return results
             
         except Exception as e:
