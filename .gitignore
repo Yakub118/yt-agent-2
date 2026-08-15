@@ -8,8 +8,6 @@ __pycache__/
 env/
 venv/
 .venv/
-.ENV
-.python-version
 pip-log.txt
 pip-delete-this-directory.txt
 .tox/
@@ -20,15 +18,6 @@ nosetests.xml
 coverage.xml
 *.cover
 *.log
-*.pot
-*.pyc
-*.pyo
-*.pyd
-*.so
-.MF
-tags
-TAGS
-.IDEAssistant
+.git/modules/
 .DS_Store
-Thumbs.db
 ```
