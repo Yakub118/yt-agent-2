@@ -32,22 +32,11 @@ class PinterestDownloader:
         self.min_likes_for_viral = 500
         self.days_lookback = 30
 
-    def search_pins(self, query: str, page_size: int = 20) -> List[Dict]:
-        """
-        Search for pins using the official Pinterest v5 Search API.
-        Uses GET /v5/search/pins endpoint which ranks viral pins by default.
-        
-        Args:
-            query: Search query (e.g., "food recipes")
-            page_size: Number of results to return
-            sort_by: Sort method - "relevance", "engagement", or "repins"
-            
-        Returns:
-            List of pin data dictionaries
-        """
+        def search_pins(self, query: str, page_size: int = 20) -> List[Dict]:
+        """Search for public pins using the correct Pinterest v5 Search API."""
         pins = []
         try:
-            # CORRECT ENDPOINT for search - uses Pinterest's relevance ranking
+            # CORRECT ENDPOINT for public search
             url = f"{self.base_url}/search/pins"
             params = {
                 "query": query,
@@ -63,7 +52,6 @@ class PinterestDownloader:
             # Filter strictly for VIDEO pins (Images don't work for Shorts)
             for pin in raw_pins:
                 media = pin.get("media", {})
-                # Check if the pin is a video
                 if media.get("media_type") == "video":
                     pins.append(pin)
             
@@ -72,9 +60,7 @@ class PinterestDownloader:
             
         except Exception as e:
             logger.error(f"Error searching Pinterest API: {e}")
-            # Fallback to web scraping method
-            return self._scrape_pinterest_search(query, page_size, "relevance")
-
+            return []
     def _sort_by_engagement(self, pins: List[Dict], sort_by: str = "repins") -> List[Dict]:
         """
         Sort pins by engagement metrics (repins, likes).
