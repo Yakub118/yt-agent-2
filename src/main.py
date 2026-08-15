@@ -66,12 +66,6 @@ class PinterestToYouTubeAgent:
     def run_daily_workflow(self, force_upload: bool = False) -> Dict:
         """
         Run the complete daily workflow.
-        
-        Args:
-            force_upload: If True, upload immediately regardless of schedule
-            
-        Returns:
-            Workflow execution results
         """
         logger.info("=" * 60)
         logger.info("Starting Daily Pinterest to YouTube Workflow")
@@ -278,15 +272,9 @@ class PinterestToYouTubeAgent:
             return results
 
     def check_channel_status(self) -> Dict:
-        """
-        Check YouTube channel status and monetization progress.
-        
-        Returns:
-            Channel status information
-        """
+        """Check YouTube channel status and monetization progress."""
         if not self.uploader:
             return {"error": "YouTube uploader not configured"}
-        
         return self.uploader.check_channel_status()
 
     def print_schedule(self):
@@ -299,25 +287,12 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Pinterest to YouTube Shorts Agent")
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Force upload immediately, ignoring schedule",
-    )
-    parser.add_argument(
-        "--schedule",
-        action="store_true",
-        help="Print upload schedule and exit",
-    )
-    parser.add_argument(
-        "--status",
-        action="store_true",
-        help="Check YouTube channel status",
-    )
+    parser.add_argument("--force", action="store_true", help="Force upload immediately, ignoring schedule")
+    parser.add_argument("--schedule", action="store_true", help="Print upload schedule and exit")
+    parser.add_argument("--status", action="store_true", help="Check YouTube channel status")
     
     args = parser.parse_args()
     
-    # Initialize agent
     agent = PinterestToYouTubeAgent()
     
     if args.schedule:
@@ -331,10 +306,8 @@ def main():
             print(f"  {key}: {value}")
         return
     
-    # Run workflow
     results = agent.run_daily_workflow(force_upload=args.force)
     
-    # Exit with appropriate code
     if results.get("success"):
         print("\n✅ Workflow completed successfully!")
         sys.exit(0)
